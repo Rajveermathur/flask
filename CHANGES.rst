@@ -30,6 +30,10 @@ Unreleased
     of only lower case file extensions. :pr:`6012`
 -   Fix parsing IPv6 with port in ``run`` and the test client. :pr:`6096`
 -   Add ``app.query`` route decorator for the HTTP QUERY method.
+-   ``Blueprint`` now accepts an optional ``response_class`` parameter. When set,
+    responses from routes registered on that blueprint will use the specified
+    response class. Child blueprints inherit their parent's ``response_class`` if
+    not explicitly set, falling back to ``app.response_class``.
 
 
 Version 3.1.3

@@ -1,0 +1,39 @@
+Currently, Flask allows overriding the response class globally on the application instance via app.response_class. However, applications using Blueprint modules cannot set custom response classes per blueprint.
+
+To support domain-specific response handling (e.g., an API blueprint auto-formatting responses differently than an HTML admin blueprint), Flask needs to allow blueprints to define their own response_class while maintaining a strict fallback hierarchy and backward compatibility.
+
+Explicit Requirements & Specification
+1. API Surface Changes
+Blueprint.__init__ (src/flask/blueprints.py):
+
+Add an optional response_class: type[Response] | None = None keyword argument to Blueprint.__init__().
+
+Expose response_class as a public attribute on the Blueprint instance (bp.response_class), defaulting to None.
+
+Allow modifying bp.response_class dynamically prior to or after blueprint registration.
+
+2. Behavioral Semantics & Resolution Order
+Flask.make_response (src/flask/app.py):
+
+Update make_response(rv) to resolve the target response class dynamically based on the current request context (request.blueprint).
+
+Resolution Hierarchy:
+
+Direct Blueprint Match: If the active endpoint belongs to a blueprint with a non-None response_class, use blueprint.response_class.
+
+Nested Blueprint Inheritance: If the active route belongs to a child blueprint whose response_class is None, traverse up the parent blueprint chain. Use the nearest parent blueprint's response_class if set.
+
+Global Fallback: If no blueprint in the active hierarchy specifies a response_class (or if the request did not match a blueprint), fall back to app.response_class.
+
+Error Handlers & Edge Cases:
+
+Custom Error Handlers: If an exception is handled by a blueprint-level error handler (@bp.errorhandler), the resulting response must use that blueprint's response_class resolution chain.
+
+Unmatched Routes (404/500): If an error occurs before request routing completes (e.g., global 404), make_response must fall back to app.response_class.
+
+Explicit Response Objects: If rv returned by a view is already an instance of BaseResponse (or a subclass), make_response must return it directly without re-wrapping or coercing it into the blueprint's response_class.
+
+3. Constraints
+Public Signature Preservation: Do not break existing applications where response_class is not passed to Blueprint.
+
+Zero Overhead for Non-Blueprint Requests: Evaluating the blueprint response class chain must occur lazily inside make_response only when request.blueprint is populated.

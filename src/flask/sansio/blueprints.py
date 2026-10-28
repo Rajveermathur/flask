@@ -5,6 +5,8 @@ import typing as t
 from collections import defaultdict
 from functools import update_wrapper
 
+from werkzeug.sansio.response import Response
+
 from .. import typing as ft
 from .scaffold import _endpoint_from_view_func
 from .scaffold import _sentinel
@@ -160,6 +162,9 @@ class Blueprint(Scaffold):
         this based on ``import_name``. In certain situations this
         automatic detection can fail, so the path can be specified
         manually instead.
+    :param response_class: A custom response class to use for this blueprint.
+        If ``None``, the response class will be resolved from parent blueprints
+        or fall back to the app's response class.
 
     .. versionchanged:: 1.1.0
         Blueprints have a ``cli`` group to register nested CLI commands.
@@ -183,6 +188,7 @@ class Blueprint(Scaffold):
         url_defaults: dict[str, t.Any] | None = None,
         root_path: str | None = None,
         cli_group: str | None = _sentinel,  # type: ignore[assignment]
+        response_class: type[Response] | None = None,
     ):
         super().__init__(
             import_name=import_name,
@@ -209,6 +215,7 @@ class Blueprint(Scaffold):
         self.url_values_defaults = url_defaults
         self.cli_group = cli_group
         self._blueprints: list[tuple[Blueprint, dict[str, t.Any]]] = []
+        self.response_class = response_class
 
     def _check_setup_finished(self, f_name: str) -> None:
         if self._got_registered_once:

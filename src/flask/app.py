@@ -1221,6 +1221,24 @@ class Flask(App):
 
         return rv
 
+    def _resolve_response_class(self) -> type[Response]:
+        """Resolve the response class to use for the current request.
+        
+        Follows the resolution hierarchy:
+        1. Direct blueprint match - use blueprint.response_class if set
+        2. Nested blueprint inheritance - traverse up parent chain
+        3. Global fallback - use app.response_class
+        
+        .. versionadded:: 3.2
+        """
+        if request.blueprints:
+            for bp_name in request.blueprints:
+                blueprint = self.blueprints.get(bp_name)
+                if blueprint is not None and blueprint.response_class is not None:
+                    return blueprint.response_class
+        
+        return self.response_class
+
     def make_response(self, rv: ft.ResponseReturnValue) -> Response:
         """Convert the return value from a view function to an instance of
         :attr:`response_class`.
@@ -1266,6 +1284,10 @@ class Flask(App):
                 The function is called as a WSGI application. The result is
                 used to create a response object.
 
+        .. versionchanged:: 3.2
+            Responses are now created using the resolved response class from
+            the blueprint hierarchy if a blueprint-specific response class is set.
+
         .. versionchanged:: 2.2
             A generator will be converted to a streaming response.
             A list will be converted to a JSON response.
@@ -1310,13 +1332,15 @@ class Flask(App):
                 " None or ended without a return statement."
             )
 
+        response_class = self._resolve_response_class()
+
         # make sure the body is an instance of the response class
-        if not isinstance(rv, self.response_class):
+        if not isinstance(rv, response_class):
             if isinstance(rv, (str, bytes, bytearray)) or isinstance(rv, cabc.Iterator):
                 # let the response class set the status and headers instead of
                 # waiting to do it manually, so that the class can handle any
                 # special logic
-                rv = self.response_class(
+                rv = response_class(
                     rv,  # pyright: ignore
                     status=status,
                     headers=headers,  # type: ignore[arg-type]
@@ -1324,11 +1348,15 @@ class Flask(App):
                 status = headers = None
             elif isinstance(rv, (dict, list)):
                 rv = self.json.response(rv)
-            elif isinstance(rv, BaseResponse) or callable(rv):
+            elif isinstance(rv, BaseResponse):
+                # If rv is already a BaseResponse instance, return it directly
+                # without re-wrapping (explicit response objects edge case)
+                rv = t.cast(Response, rv)
+            elif callable(rv):
                 # evaluate a WSGI callable, or coerce a different response
                 # class to the correct type
                 try:
-                    rv = self.response_class.force_type(
+                    rv = response_class.force_type(
                         rv,  # type: ignore[arg-type]
                         request.environ,
                     )
